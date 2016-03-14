@@ -41,12 +41,20 @@ bool CellPointcloud::init()
     if ( ! ros::master::check() ) {
         return false;
     }
+
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp1(new pcl::PointCloud<pcl::PointXYZRGB>);
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp2(new pcl::PointCloud<pcl::PointXYZRGB>);
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp3(new pcl::PointCloud<pcl::PointXYZRGB>);
+cloud0 = tmp1;
+cloud1 = tmp2;
+cloud2 = tmp3;
+
     ros::start();
 
     ros::NodeHandle n;
-    subPointCloud1 = n.subscribe<sensor_msgs::PointCloud2, CellPointcloud>("NUC1/sd/points", 10, &CellPointcloud::cloudCallback1,this);
-    subPointCloud2 = n.subscribe<sensor_msgs::PointCloud2, CellPointcloud>("NUC2/sd/points", 10, &CellPointcloud::cloudCallback2, this);
-    subPointCloud0 = n.subscribe<sensor_msgs::PointCloud2, CellPointcloud>("PC/sd/points", 10, &CellPointcloud::cloudCallback0, this);
+    subPointCloud1 = n.subscribe<sensor_msgs::PointCloud2, CellPointcloud>("/NUC1/sd/points", 1, &CellPointcloud::cloudCallback1,this);
+    subPointCloud2 = n.subscribe<sensor_msgs::PointCloud2, CellPointcloud>("/NUC2/sd/points", 1, &CellPointcloud::cloudCallback2, this);
+    subPointCloud0 = n.subscribe<sensor_msgs::PointCloud2, CellPointcloud>("/PC/sd/points", 1, &CellPointcloud::cloudCallback0, this);
     pubPointCloud = n.advertise<sensor_msgs::PointCloud2>("PointCloudMerged", 500);
 
     return true;
@@ -55,12 +63,23 @@ bool CellPointcloud::init()
 void CellPointcloud::run()
 {
     std::cout << "Running" << std::endl;
-    ros::Rate loop_rate(200);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
+    cloudMerged = tmp;
+    ros::Rate loop_rate(100);
+    static tf::TransformBroadcaster br;
+    tf::Transform transform;
+    transform.setOrigin( tf::Vector3(0.0, 0.0, 0.0) );
+    tf::Quaternion q;
+    q.setRPY(0, 0, 0);
+    transform.setRotation(q);
+    
     while ( ros::ok() ) {
+    br.sendTransform(tf::StampedTransform(transform, ros::Time::now(),"NUC2_ir_optical_frame", "PointCloudMerged_link"));
 
         if(newCloud0 && newCloud1 && newCloud2){
-            *cloudMerged = *cloud0 + *cloud1;
-            *cloudMerged += *cloud2;
+            *cloudMerged = *cloud2;
+	    *cloudMerged += *cloud1;
+            *cloudMerged += *cloud0;
             sensor_msgs::PointCloud2 msg;
             pcl::toROSMsg(*cloudMerged, msg);
             pubPointCloud.publish(msg);
@@ -76,26 +95,34 @@ void CellPointcloud::run()
 
 void CellPointcloud::cloudCallback0(const sensor_msgs::PointCloud2ConstPtr &cloud_msg)
 {
+    //std::cout << cameraPositions.at(0);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::fromROSMsg(*cloud_msg, *tmp);
-    pcl::transformPointCloud(*tmp, *cloud0, cameraPositions.at(0));
-
+    //cloud0 = tmp;
+    *cloud0 = *tmp;
+    pcl::transformPointCloud(*tmp, *cloud0, cameraPositions.at(2));
     newCloud0 = true;
 }
 
 void CellPointcloud::cloudCallback1(const sensor_msgs::PointCloud2ConstPtr &cloud_msg)
 {
+    //std::cout << cameraPositions.at(1);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::fromROSMsg(*cloud_msg, *tmp);
-    pcl::transformPointCloud(*tmp, *cloud1, cameraPositions.at(1));
+    //cloud1 = tmp;
+    *cloud1 = *tmp;    
+    pcl::transformPointCloud(*tmp, *cloud1, cameraPositions.at(0));
     newCloud1 = true;
 }
 
 void CellPointcloud::cloudCallback2(const sensor_msgs::PointCloud2ConstPtr &cloud_msg)
 {
+    //std::cout << cameraPositions.at(2);
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmp(new pcl::PointCloud<pcl::PointXYZRGB>);
     pcl::fromROSMsg(*cloud_msg, *tmp);
-    pcl::transformPointCloud(*tmp, *cloud2, cameraPositions.at(2));
+    //cloud2 = tmp;
+    *cloud2 = *tmp;
+    pcl::transformPointCloud(*tmp, *cloud2, cameraPositions.at(1));
     newCloud2 = true;
 
 }
